@@ -1,0 +1,14 @@
+app:
+    name: "cv-intake"
+    version: "0.0.2"
+
+llm:
+    model: ""
+    temperature: 0.7
+    api_key: ""
+    base_url: ""
+
+server:
+    host: 0.0.0.0
+    port: 9000
+    cors_origins: ["*"]

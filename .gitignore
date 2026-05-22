@@ -1,0 +1,11 @@
+__pycache__
+.pytest_cache
+.vscode
+
+node_modules
+
+public/cvs/*
+db/cv.db
+
+
+app.log
