@@ -2,6 +2,7 @@ __pycache__
 .pytest_cache
 .vscode
 
+.next
 node_modules
 
 public/cvs/*
@@ -9,3 +10,4 @@ db/cv.db
 
 
 app.log
+config_copy.yaml

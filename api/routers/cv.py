@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
@@ -30,6 +30,13 @@ class CvItem(BaseModel):
     ocr_engine: str | None = None
     resume_text: str | None = None
     resume_text_length: int | None = None
+    job_text: str | None = None
+    job_text_length: int | None = None
+    resume_summary: dict[str, Any] | None = None
+    verify_result: dict[str, Any] | None = None
+    score_result: dict[str, Any] | None = None
+    final_answer: str | None = None
+    data: dict[str, Any] | None = None
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -45,6 +52,7 @@ class CvListItem(BaseModel):
     error: str | None = None
     ocr_engine: str | None = None
     resume_text_length: int | None = None
+    final_answer: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -102,6 +110,7 @@ def _to_cv_list_item(cv: Cvs) -> CvListItem:
         error=item["error"],
         ocr_engine=item["ocr_engine"],
         resume_text_length=item["resume_text_length"],
+        final_answer=item["final_answer"],
         created_at=item["created_at"],
         updated_at=item["updated_at"],
     )

@@ -1,7 +1,8 @@
 from pathlib import Path
+from typing import Generator
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 DB_PATH = Path(__file__).resolve().parent / "cv.db"
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH.as_posix()}"
@@ -13,9 +14,15 @@ engine = create_engine(
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
 
-def get_db():
+
+class Base(DeclarativeBase):
+    """SQLAlchemy 2.x declarative base with proper static typing support."""
+
+    pass
+
+
+def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
         yield db

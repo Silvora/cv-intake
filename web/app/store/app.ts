@@ -1,5 +1,4 @@
 import { create } from "zustand"
-import { persist, createJSONStorage } from "zustand/middleware"
 
 import type { PDFFileInfo } from "@/hooks/useFolderPDFFiles"
 
@@ -39,7 +38,6 @@ export interface UploadResultType {
   ocr_engine?: string
   resume_text?: string
   resume_text_length?: number
-  jd_text_length?: number
   error?: string
   data?: {
     result?: {

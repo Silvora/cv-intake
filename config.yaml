@@ -1,12 +1,15 @@
 app:
     name: "cv-intake"
-    version: "0.0.2"
+    version: "0.0.3"
 
 llm:
     model: ""
     temperature: 0.7
     api_key: ""
     base_url: ""
+
+zhipu:
+    api_key: ""
 
 server:
     host: 0.0.0.0

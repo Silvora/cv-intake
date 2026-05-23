@@ -42,10 +42,6 @@ function normalizeUploadResult(
       typeof result.resume_text_length === "number"
         ? result.resume_text_length
         : undefined,
-    jd_text_length:
-      typeof result.jd_text_length === "number"
-        ? result.jd_text_length
-        : undefined,
     error: typeof result.error === "string" ? result.error : undefined,
     data,
   }

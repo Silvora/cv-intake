@@ -16,11 +16,10 @@ PUBLIC_DIR = Path(__file__).resolve().parents[1] / "public"
 
 class NentWorker:
     def __init__(self):
-        self.app = None
+        self.app = FastAPI()
         self.setup()
 
     def setup(self):
-        self.app = FastAPI()
         self.app.add_middleware(
             CORSMiddleware,
             allow_origins=appConfig.server.cors_origins,  # 允许的前端地址
@@ -43,5 +42,3 @@ class NentWorker:
             host=appConfig.server.host,
             port=appConfig.server.port,
         )
-
-    

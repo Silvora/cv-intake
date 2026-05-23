@@ -18,6 +18,8 @@ class LLMConfig(BaseModel):
     api_key: str = ""
     base_url: str = ""
 
+class ZhipuConfig(BaseModel):
+    api_key: str = ""
 
 class ServerConfig(BaseModel):
     host: str = "0.0.0.0"
@@ -28,6 +30,7 @@ class ServerConfig(BaseModel):
 class Config(BaseModel):
     app: AppConfig = AppConfig()
     llm: LLMConfig = LLMConfig()
+    zhipu: ZhipuConfig = ZhipuConfig()
     server: ServerConfig = ServerConfig()
 
 
