@@ -1,47 +1,37 @@
 "use client"
 
-import * as React from "react"
-import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  Bell,
-  Check,
-  Globe,
-  Home,
-  Keyboard,
-  Link,
-  Lock,
-  Menu,
-  MessageCircle,
-  Paintbrush,
-  Settings,
-  Video,
+    Bell,
+    Check,
+    Globe,
+    Home,
+    Keyboard,
+    Link,
+    Lock,
+    Menu,
+    MessageCircle,
+    Paintbrush,
+    Settings,
+    Video,
 } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
+import * as React from "react"
 
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
 import { Button } from "@/components/ui/button"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-  DialogTrigger,
+    Dialog,
+    DialogContent,
+    DialogTrigger,
 } from "@/components/ui/dialog"
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
+    Sidebar,
+    SidebarContent,
+    SidebarGroup,
+    SidebarGroupContent,
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+    SidebarProvider,
 } from "@/components/ui/sidebar"
 
 const data = {
@@ -77,13 +67,13 @@ export function SettingsDialog() {
           </Button>
         }
       ></DialogTrigger>
-      <DialogContent  showCloseButton={false} className="overflow-hidden p-0 md:max-h-[500px] md:max-w-[700px] lg:max-w-[800px]">
+      <DialogContent  showCloseButton={false} className="overflow-hidden p-0 md:max-h-125 md:max-w-175 lg:max-w-200">
         {/* <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">
           Customize your settings here.
         </DialogDescription> */}
         <SidebarProvider className="items-start">
-          <Sidebar collapsible="none" className="hidden md:flex w-[240px]!">
+          <Sidebar collapsible="none" className="hidden md:flex w-60!">
             <SidebarContent>
               <SidebarGroup>
                 <SidebarGroupContent>
@@ -110,8 +100,8 @@ export function SettingsDialog() {
               </SidebarGroup>
             </SidebarContent>
           </Sidebar>
-          <main className="flex h-[480px] flex-1 flex-col overflow-hidden">
-          
+          <main className="flex h-120 flex-1 flex-col overflow-hidden">
+
               {Array.from({ length: 10 }).map((_, i) => (
                 <div
                   key={i}

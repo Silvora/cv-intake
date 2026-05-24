@@ -1,76 +1,50 @@
 "use client"
 
-import * as React from "react"
-import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  File01Icon,
-  FolderLibraryIcon,
-  InboxUploadIcon,
-  Tick02Icon,
+    File01Icon,
+    FolderLibraryIcon,
+    InboxUploadIcon,
+    Tick02Icon,
 } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
+import * as React from "react"
 import { toast } from "sonner"
 
+import { useJobsQuery, useUploadCvsMutation } from "@/app/http/useApi"
 import { useAppStore } from "@/app/store/app"
-import { apiClient } from "@/api"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
 } from "@/components/ui/dialog"
 import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-  FieldSet,
+    Field,
+    FieldContent,
+    FieldDescription,
+    FieldGroup,
+    FieldLabel,
+    FieldSet,
 } from "@/components/ui/field"
-import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { useFolderPDFFiles } from "@/hooks/useFolderPDFFiles"
 import { cn } from "@/lib/utils"
 
-interface UploadResponse {
-  success: boolean
-  message: string
-  count: number
-  items: Array<{
-    id: string
-    filename: string
-    job_id: string
-    job_name?: string
-    md5?: string | null
-    status: string
-    created_at?: string
-  }>
-}
-
-interface JobsResponse {
-  success: boolean
-  items: Array<{
-    id: string | number
-    name?: string
-    label?: string
-    description?: string
-  }>
-}
-
 export function UploadsDialog() {
   const [open, setOpen] = React.useState(false)
-  const [isJobsLoading, setIsJobsLoading] = React.useState(false)
   const {
     files,
     error,
@@ -82,57 +56,32 @@ export function UploadsDialog() {
     handleFolderChange,
     handleFileChange,
   } = useFolderPDFFiles()
-  const {jobList,selectedJobId,setSelectedJobId,setJobList,setUploading,isUploading,setUploadError,uploadError,seedAcceptedUploads } = useAppStore()
+  const {
+    selectedJobId,
+    setSelectedJobId,
+    setUploading,
+    isUploading,
+    setUploadError,
+    uploadError,
+  } = useAppStore()
+  const jobsQuery = useJobsQuery()
+  const uploadMutation = useUploadCvsMutation()
+
+  const jobList = jobsQuery.data ?? []
+  const selectedJob = React.useMemo(
+    () => jobList.find((job) => job.id === selectedJobId),
+    [jobList, selectedJobId]
+  )
 
   React.useEffect(() => {
-
     if (!open) {
       return
     }
-
-    if (jobList.length > 0) {
+    if (!jobList.length || selectedJobId) {
       return
     }
-
-    let isMounted = true
-
-    async function loadJobs() {
-      try {
-        setIsJobsLoading(true)
-        const payload = await apiClient.get<JobsResponse>("/jobs")
-        if (!isMounted || !payload.success) {
-          return
-        }
-
-        const nextJobs = payload.items.map((item) => ({
-          id: String(item.id),
-          label: item.label || "",
-          description: item.description || "",
-        }))
-
-        if (nextJobs.length) {
-          setJobList(nextJobs)
-          if (!nextJobs.some((job) => job.id === selectedJobId)) {
-            setSelectedJobId(nextJobs[0].id)
-          }
-        }
-      } catch (jobError) {
-        const message =
-          jobError instanceof Error ? jobError.message : "获取岗位列表失败"
-        setUploadError(message)
-      } finally {
-        if (isMounted) {
-          setIsJobsLoading(false)
-        }
-      }
-    }
-
-    loadJobs()
-
-    return () => {
-      isMounted = false
-    }
-  }, [jobList.length, open, setJobList, setSelectedJobId, setUploadError, selectedJobId])
+    setSelectedJobId(jobList[0].id)
+  }, [jobList, open, selectedJobId, setSelectedJobId])
 
   React.useEffect(() => {
     if (open) {
@@ -143,16 +92,14 @@ export function UploadsDialog() {
     setUploadError(null)
   }, [open, reset, setUploadError])
 
-  const handleDialogChange = React.useCallback((nextOpen: boolean) => {
-    setOpen(nextOpen)
-    if (!nextOpen) {
-      setUploadError(null)
-    }
-  }, [setUploadError])
-
-  const selectedJob = React.useMemo(
-    () => jobList.find((job) => job.id === selectedJobId),
-    [jobList, selectedJobId]
+  const handleDialogChange = React.useCallback(
+    (nextOpen: boolean) => {
+      setOpen(nextOpen)
+      if (!nextOpen) {
+        setUploadError(null)
+      }
+    },
+    [setUploadError]
   )
 
   const handleConfirmUpload = React.useCallback(async () => {
@@ -170,29 +117,10 @@ export function UploadsDialog() {
       setUploading(true)
       setUploadError(null)
 
-      const formData = new FormData()
-      for (const item of files) {
-        formData.append("files", item.file, item.name)
-      }
-      formData.append("job_ids", selectedJobId)
-
-      const payload = await apiClient.post<UploadResponse>("/upload", formData)
-      seedAcceptedUploads(
-        payload.items.map((item) => ({
-          ...item,
-          id: item.md5 || item.id,
-          status: item.status as
-            | "queued"
-            | "uploading"
-            | "processing"
-            | "processed"
-            | "ocr_no_text"
-            | "skipped_duplicate_md5"
-            | "skipped_empty_file"
-            | "skipped_non_pdf"
-            | "error",
-        }))
-      )
+      const payload = await uploadMutation.mutateAsync({
+        files: files.map((item) => ({ file: item.file, name: item.name })),
+        jobId: selectedJobId,
+      })
 
       toast.success(`已提交 ${payload.count} 份 CV，正在处理中`)
       setOpen(false)
@@ -206,10 +134,10 @@ export function UploadsDialog() {
     }
   }, [
     files,
-    seedAcceptedUploads,
     selectedJobId,
     setUploadError,
     setUploading,
+    uploadMutation,
   ])
 
   return (
@@ -223,7 +151,7 @@ export function UploadsDialog() {
       />
       <DialogContent
         showCloseButton={false}
-        className="overflow-hidden p-0 md:max-h-[640px] md:max-w-[760px]"
+        className="overflow-hidden p-0 md:max-h-160 md:max-w-190"
       >
         <input
           ref={folderInputRef}
@@ -301,12 +229,14 @@ export function UploadsDialog() {
                     </Select>
                     <FieldDescription
                       className={cn(
-                        "max-h-[230px] overflow-y-auto rounded-md border bg-muted/30 px-3 py-2"
+                        "max-h-57.5 overflow-y-auto rounded-md border bg-muted/30 px-3 py-2"
                       )}
                     >
-                      {isJobsLoading
+                      {jobsQuery.isLoading
                         ? "岗位列表加载中..."
-                        : selectedJob?.description || "选择后将使用对应 JD 处理所有文件。"}
+                        : jobsQuery.error
+                          ? "获取岗位列表失败"
+                          : selectedJob?.description || "选择后将使用对应 JD 处理所有文件。"}
                     </FieldDescription>
                   </FieldContent>
                 </Field>
@@ -314,7 +244,7 @@ export function UploadsDialog() {
             </FieldSet>
           </aside>
 
-          <section className="flex min-h-[520px] flex-col">
+          <section className="flex min-h-130 flex-col">
             <div className="border-b px-5 py-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -329,9 +259,7 @@ export function UploadsDialog() {
                   <Badge variant="outline">{files.length} files</Badge>
                 ) : null}
               </div>
-              {error ? (
-                <p className="mt-2 text-xs text-destructive">{error}</p>
-              ) : null}
+              {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}
               {uploadError ? (
                 <p className="mt-2 text-xs text-destructive">{uploadError}</p>
               ) : null}
@@ -359,7 +287,7 @@ export function UploadsDialog() {
                     </div>
                   ))
                 ) : (
-                  <div className="flex h-full min-h-[280px] items-center justify-center rounded-lg border border-dashed text-muted-foreground">
+                  <div className="flex h-full min-h-70 items-center justify-center rounded-lg border border-dashed text-muted-foreground">
                     选择文件或文件夹后，这里会列出待处理的 PDF
                   </div>
                 )}

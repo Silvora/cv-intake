@@ -1,27 +1,27 @@
 "use client"
 
-import { AppSidebar } from "./app-sidebar"
+import { useCvDetailQuery } from "@/app/http/useApi"
 import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
+    Breadcrumb,
+    BreadcrumbItem,
+    BreadcrumbList,
+    BreadcrumbPage,
 } from "@/components/ui/breadcrumb"
 import { Separator } from "@/components/ui/separator"
 import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
+    SidebarInset,
+    SidebarProvider,
+    SidebarTrigger,
 } from "@/components/ui/sidebar"
-import { useAppStore } from "@/app/store/app"
+import { usePathname } from "next/navigation"
+import { AppSidebar } from "./app-sidebar"
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const uploadResults = useAppStore((state) => state.uploadResults)
-  const selectedResultId = useAppStore((state) => state.selectedResultId)
+  const pathname = usePathname()
+  const cvId = pathname.startsWith("/cv/") ? pathname.split("/")[2] : undefined
+  const cvQuery = useCvDetailQuery(cvId)
 
-  const selectedCv =
-    (selectedResultId ? uploadResults[selectedResultId] : null) ?? null
+  const selectedCv = cvQuery.data ?? null
 
   return (
     <SidebarProvider

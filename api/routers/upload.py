@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
@@ -5,7 +6,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from db.database import get_db
+from db.database import SessionLocal, get_db
 from utils.cv_store import (
     get_job_or_404,
     public_file_abs_path,
@@ -58,6 +59,95 @@ class UploadResponse(BaseModel):
 async def _publish_result(item: dict) -> None:
     """把单条简历最新状态推送到 SSE，前端会按 id 合并状态。"""
     await conn.publish("results", {item["id"]: item})
+
+
+async def _process_cv_async(cv_id: str, file_path: str, job_text: str) -> None:
+    """
+    后台异步处理单份简历。
+
+    这个任务只负责 OCR + workflow + 最终结果落库，
+    不阻塞上传 HTTP 请求。
+    """
+    db = SessionLocal()
+    try:
+        extracting_item = update_cv_status(
+            db,
+            cv_id,
+            status_value="processing",
+            error=None,
+            job_text=job_text,
+            job_text_length=len(job_text),
+        )
+        await _publish_result(extracting_item)
+
+        resume_text, engine_name = await run_in_threadpool(
+            extract_pdf_text,
+            public_file_abs_path(Path(file_path).name),
+        )
+        text_length = len(resume_text.strip())
+
+        if text_length <= 0:
+            processed_item = update_cv_status(
+                db,
+                cv_id,
+                status_value="ocr_no_text",
+                error="PDF 文本提取结果为空",
+                ocr_engine=engine_name,
+                resume_text="",
+                resume_text_length=0,
+                job_text=job_text,
+                job_text_length=len(job_text),
+            )
+            await _publish_result(processed_item)
+            return
+
+        extracted_item = update_cv_status(
+            db,
+            cv_id,
+            status_value="processing",
+            error=None,
+            ocr_engine=engine_name,
+            resume_text=resume_text,
+            resume_text_length=text_length,
+            job_text=job_text,
+            job_text_length=len(job_text),
+        )
+        await _publish_result(extracted_item)
+
+        workflow_result = await run_in_threadpool(
+            run_cv_workflow,
+            resume_text,
+            job_text,
+        )
+        processed_item = update_cv_status(
+            db,
+            cv_id,
+            status_value=_derive_workflow_status(workflow_result),
+            error=_derive_workflow_error(workflow_result),
+            ocr_engine=engine_name,
+            resume_text=resume_text,
+            resume_text_length=text_length,
+            job_text=job_text,
+            job_text_length=len(job_text),
+            resume_summary=workflow_result.get("resume_summary"),
+            verify_result=workflow_result.get("verify_result"),
+            score_result=workflow_result.get("score_result"),
+            final_answer=workflow_result.get("final_answer"),
+        )
+        await _publish_result(processed_item)
+    except Exception as exc:
+        log.exception("Async CV process failed: cv_id=%s, error=%s", cv_id, exc)
+        processed_item = update_cv_status(
+            db,
+            cv_id,
+            status_value="error",
+            error=f"PDF 文本提取失败: {exc}",
+            job_text=job_text,
+            job_text_length=len(job_text),
+        )
+        await _publish_result(processed_item)
+    finally:
+        db.close()
 
 
 def _derive_workflow_status(workflow_result: State) -> str:
@@ -122,7 +212,7 @@ async def upload_files(
 
     for file in files:
         try:
-            # save_uploaded_cv 会完成去重、落盘和 DB 初始记录写入。
+            # save_uploaded_cv 只负责落盘和保存基础信息，不在这里做 OCR / workflow。
             log.info("Start handling upload file: filename=%s", file.filename)
             item, accepted = await save_uploaded_cv(file=file, job=job, db=db)
             items.append(UploadItem(**item))
@@ -130,6 +220,13 @@ async def upload_files(
             results_payload[item["id"]] = item
             if accepted:
                 accepted_count += 1
+                asyncio.create_task(
+                    _process_cv_async(
+                        item["id"],
+                        item["file_path"],
+                        job.description or "",
+                    )
+                )
             log.info(
                 "Upload file handled: filename=%s, hash=%s, status=%s, accepted=%s",
                 file.filename,
@@ -146,107 +243,9 @@ async def upload_files(
     final_items: list[UploadItem] = []
     for item in items:
         if item.status != "queued":
-            # 跳过非 queued 的记录，例如非 PDF、空文件、同岗位重复文件。
             final_items.append(item)
             continue
-
-        job_text = (job.description or "").strip()
-        job_text_length = len(job_text)
-        # 进入 processing，表示文件已经入库，开始做 OCR 和工作流处理。
-        extracting_item = update_cv_status(
-            db,
-            item.id,
-            status_value="processing",
-            error=None,
-            job_text=job_text,
-            job_text_length=job_text_length,
-        )
-        log.info("Start PDF extract: cv_id=%s, filename=%s", item.id, item.filename)
-        await _publish_result(extracting_item)
-
-        try:
-            file_path = public_file_abs_path(Path(item.file_path).name)
-            resume_text, engine_name = extract_pdf_text(file_path)
-            text_length = len(resume_text.strip())
-
-            if text_length > 0:
-                # OCR 成功后先保存原始文本，再继续跑 workflow。
-                extracted_item = update_cv_status(
-                    db,
-                    item.id,
-                    status_value="processing",
-                    error=None,
-                    ocr_engine=engine_name,
-                    resume_text=resume_text,
-                    resume_text_length=text_length,
-                    job_text=job_text,
-                    job_text_length=job_text_length,
-                )
-                await _publish_result(extracted_item)
-
-                # workflow 调用可能阻塞，因此放到线程池中执行，避免卡住事件循环。
-                workflow_result = await run_in_threadpool(
-                    run_cv_workflow,
-                    resume_text,
-                    job_text,
-                )
-                # 把结构化摘要、核验结果、评分结果和最终结论一次性落库。
-                processed_item = update_cv_status(
-                    db,
-                    item.id,
-                    status_value=_derive_workflow_status(workflow_result),
-                    error=_derive_workflow_error(workflow_result),
-                    ocr_engine=engine_name,
-                    resume_text=resume_text,
-                    resume_text_length=text_length,
-                    job_text=job_text,
-                    job_text_length=job_text_length,
-                    resume_summary=workflow_result.get("resume_summary"),
-                    verify_result=workflow_result.get("verify_result"),
-                    score_result=workflow_result.get("score_result"),
-                    final_answer=workflow_result.get("final_answer"),
-                )
-                log.info(
-                    "Workflow finished: cv_id=%s, status=%s, engine=%s, text_length=%s",
-                    item.id,
-                    processed_item["status"],
-                    engine_name,
-                    text_length,
-                )
-            else:
-                # OCR 成功执行但没有文本时，不进入 workflow，直接标记为 ocr_no_text。
-                processed_item = update_cv_status(
-                    db,
-                    item.id,
-                    status_value="ocr_no_text",
-                    error="PDF 文本提取结果为空",
-                    ocr_engine=engine_name,
-                    resume_text="",
-                    resume_text_length=0,
-                    job_text=job_text,
-                    job_text_length=job_text_length,
-                )
-                log.warning(
-                    "PDF extract empty: cv_id=%s, engine=%s",
-                    item.id,
-                    engine_name,
-                )
-        except Exception as exc:
-            # 这里兜底 OCR 和 workflow 编排阶段的异常，避免单份简历打断整个上传请求。
-            log.exception("PDF extract failed: cv_id=%s, filename=%s, error=%s", item.id, item.filename, exc)
-            processed_item = update_cv_status(
-                db,
-                item.id,
-                status_value="error",
-                error=f"PDF 文本提取失败: {exc}",
-                ocr_engine="pypdf/pdfplumber",
-                job_text=job_text,
-                job_text_length=job_text_length,
-            )
-
-        # 无论成功失败，都推送最终状态并放入响应。
-        await _publish_result(processed_item)
-        final_items.append(UploadItem(**processed_item))
+        final_items.append(item)
 
     return UploadResponse(
         message="Upload completed",

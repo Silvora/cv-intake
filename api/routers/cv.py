@@ -55,6 +55,7 @@ class CvListItem(BaseModel):
     final_answer: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
+    score_result: dict[str, Any] | None = None
 
 
 class CvListResponse(BaseModel):
@@ -113,6 +114,7 @@ def _to_cv_list_item(cv: Cvs) -> CvListItem:
         final_answer=item["final_answer"],
         created_at=item["created_at"],
         updated_at=item["updated_at"],
+        score_result=item["score_result"],
     )
 
 
