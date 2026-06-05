@@ -1,50 +1,20 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from db.database import get_db
-from db.models import Jobs
+from database.main import get_db
+from database.models.job import Jobs
+from database.schemas.job import (
+    JobCreate,
+    JobDetailResponse,
+    JobItem,
+    JobListResponse,
+    JobMutationResponse,
+    JobUpdate,
+)
 
 router = APIRouter(tags=["jobs"])
-
-
-class JobBase(BaseModel):
-    label: str = Field(..., min_length=1, description="岗位名称")
-    description: str = Field(default="", description="岗位描述")
-
-
-class JobCreate(JobBase):
-    pass
-
-
-class JobUpdate(BaseModel):
-    label: Optional[str] = Field(default=None, min_length=1, description="岗位名称")
-    description: Optional[str] = Field(default=None, description="岗位描述")
-
-
-class JobItem(BaseModel):
-    id: int
-    label: str
-    description: str
-
-
-class JobListResponse(BaseModel):
-    success: bool = True
-    items: list[JobItem]
-    total: int
-
-
-class JobDetailResponse(BaseModel):
-    success: bool = True
-    item: JobItem
-
-
-class JobMutationResponse(BaseModel):
-    success: bool = True
-    message: str
-    item: JobItem
 
 
 def _serialize_job(job: Jobs) -> JobItem:
@@ -55,7 +25,7 @@ def _serialize_job(job: Jobs) -> JobItem:
     )
 
 
-def _model_dump(model: BaseModel, **kwargs):
+def _model_dump(model, **kwargs):
     if hasattr(model, "model_dump"):
         return model.model_dump(**kwargs)
     return model.dict(**kwargs)

@@ -1,148 +1,298 @@
 # CV Intake
 
-一个用于简历接收、PDF 文本提取、结构化解析、联网核验和岗位评分的简历处理系统。
+简历接收、OCR 提取、结构化解析、联网核验、岗位评分和面试题生成的一体化服务。
 
 核心链路：
 
-`上传 PDF -> OCR 提取文本 -> Summary 抽取 -> Verify 核验 -> Score 打分 -> 写入 SQLite -> SSE 推送前端`
+`上传 PDF -> 写入数据库 -> 投递 RQ Worker -> OCR -> LangGraph Workflow -> 持久化结果 -> SSE 推送前端`
 
-## 功能
+## 功能概览
 
 - 上传 PDF 简历
 - 提取 PDF 文本
 - 抽取结构化简历信息
 - 联网核验学校、公司和工作时间
-- 根据岗位描述输出 0-100 分评分
-- 保存中间结果和最终结果到数据库
-- 通过 SSE 推送处理状态
+- 根据岗位描述输出总分和分项评分
+- 生成面试题结果
+- 将中间状态和最终结果写入 SQLite
+- 通过 SSE 实时推送处理结果
 
-## 目录
+## 技术栈
+
+- 后端：FastAPI
+- 数据库：SQLite + SQLAlchemy 2.x
+- 迁移：Alembic
+- 异步任务：Redis + RQ
+- 工作流：LangGraph
+- 模型调用：LLM + `zai-sdk` Web Search
+- 前端：Next.js + React Query
+
+## 目录结构
 
 ```text
 .
-├── api/                    # FastAPI 路由
-│   └── routers/
-│       ├── job.py          # 岗位接口
-│       ├── upload.py       # 上传 + 异步工作流
-│       ├── cv.py           # 简历查询接口
-│       └── sse.py          # SSE 推送
-├── config.yaml             # 应用和模型配置
-├── db/                     # SQLite 与 ORM
-├── public/                 # 前端可访问的文件
-├── utils/                  # PDF、存储、SSE、日志
-├── workflow/               # Summary / Verify / Score 工作流
-└── web/                    # Next.js 前端
+├── api/
+│   ├── main.py                    # FastAPI 应用装配
+│   ├── routers/                   # jobs / cvs / upload / settings / sse
+│   ├── services/                  # 上传服务、队列、CV 处理服务
+│   ├── utils/                     # 文件存储、仓储、序列化、PDF 文本处理
+│   └── workers/                   # RQ worker 入口
+├── database/
+│   ├── main.py                    # engine / session / migration bootstrap
+│   ├── models/                    # SQLAlchemy ORM 模型
+│   └── schemas/                   # Pydantic 请求/响应模型
+├── workflow/
+│   ├── run.py                     # LangGraph 工作流装配
+│   ├── state.py                   # Workflow 状态定义
+│   ├── llm.py                     # LLM 封装
+│   ├── node/                      # summary / verify / score / interview
+│   └── tools/                     # Web Search 工具
+├── config/
+│   └── app.py                     # 读取 config.yaml
+├── utils/
+│   ├── log.py                     # 日志
+│   └── sse_conn.py                # SSE 发布订阅
+├── web/
+│   ├── app/http/                  # React Query API hooks
+│   ├── app/cv/                    # CV 列表页与详情页
+│   ├── app/_layout/               # 侧边栏、设置、上传弹窗
+│   └── components/ui/             # 通用 UI 组件
+├── alembic/                       # 数据库迁移
+├── public/                        # 上传后的 PDF 公共目录
+├── config.yaml                    # 项目配置
+└── main.py                        # 后端启动入口
 ```
 
-## 后端流程
+## 系统流程
 
-### 上传
+### 1. 上传
 
 入口：[api/routers/upload.py](/Users/admin/Desktop/cv-intake/api/routers/upload.py:1)
 
-1. 接收 `job_id` 和多个 PDF
-2. 保存文件基础信息
-3. 写入 `cvs` 表
-4. 立即返回
-5. 后台异步跑 OCR 和工作流
+流程：
 
-### 工作流
+1. 接收 `files` 和 `job_id`
+2. 校验岗位是否存在
+3. 保存 PDF 到 `public/cvs/`
+4. 写入 `cvs` 记录
+5. 立即返回上传结果
+6. 将任务投递到 Redis/RQ 队列
+7. 通过 SSE 向前端推送初始状态
+
+### 2. Worker 处理
+
+入口：
+
+- [api/workers/worker.py](/Users/admin/Desktop/cv-intake/api/workers/worker.py:1)
+- [api/workers/cv_worker.py](/Users/admin/Desktop/cv-intake/api/workers/cv_worker.py:1)
+- [api/services/cv_processing_service.py](/Users/admin/Desktop/cv-intake/api/services/cv_processing_service.py:1)
+
+流程：
+
+1. Worker 从 Redis 队列消费任务
+2. 提取 PDF 文本
+3. 更新 `processing_stage`
+4. 执行工作流
+5. 将每个阶段结果写回数据库
+6. 通过 SSE 持续推送更新
+
+### 3. Workflow
 
 入口：[workflow/run.py](/Users/admin/Desktop/cv-intake/workflow/run.py:1)
 
-顺序：
+当前节点顺序：
 
 1. `SummaryNode`
 2. `VerifyNode`
 3. `ScoreNode`
+4. `InterviewNode`
 
-关键状态字段：
+状态定义见 [workflow/state.py](/Users/admin/Desktop/cv-intake/workflow/state.py:1)。
 
+关键字段：
+
+- `cv_id`
+- `cv_name`
 - `resume_text`
 - `job_text`
 - `resume_summary`
 - `verify_result`
 - `score_result`
+- `interview_result`
 - `final_answer`
+- `processing_stage`
+- `error`
 
-### 节点说明
+### 4. 节点职责
 
-`SummaryNode`：
+`SummaryNode`
 - 输入 OCR 文本
 - 输出结构化简历摘要
 
-`VerifyNode`：
-- 读取 `resume_summary`
-- 使用 `zai-sdk` 的 `web_search`
-- 联网查询学校和公司
-- 输出核验结果
+`VerifyNode`
+- 消费 `resume_summary`
+- 调用 `zai-sdk` 搜索学校和公司
+- 生成核验结果
 
-`ScoreNode`：
-- 读取 `job_text + resume_summary + verify_result`
+`ScoreNode`
+- 结合 `job_text + resume_summary + verify_result`
 - 输出总分、分项分数和原因
 
-## 数据库
+`InterviewNode`
+- 基于前序结果生成面试问题或面试结果结构
 
-核心表是 `cvs`，定义在 [db/models.py](/Users/admin/Desktop/cv-intake/db/models.py:1)。
+## 数据模型
 
-主要字段：
+### ORM
 
+数据库模型位于：
+
+- [database/models/cv.py](/Users/admin/Desktop/cv-intake/database/models/cv.py:1)
+- [database/models/job.py](/Users/admin/Desktop/cv-intake/database/models/job.py:1)
+- [database/models/settings.py](/Users/admin/Desktop/cv-intake/database/models/settings.py:1)
+
+说明：
+
+- `database.models.*` 只用于数据库查询和写入
+- `database.schemas.*` 只用于接口请求和响应校验
+
+### 主要表
+
+`cvs`
+- `id`
 - `filename`
 - `job_id`
 - `job_name`
 - `file_path`
+- `md5`
+- `status`
+- `processing_stage`
+- `processing_attempt`
 - `resume_text`
-- `job_text`
 - `resume_summary`
 - `verify_result`
 - `score_result`
+- `interview_result`
 - `final_answer`
-- `status`
-- `error`
+- `created_at`
+- `updated_at`
 
-说明：
+`jobs`
+- `id`
+- `label`
+- `description`
 
-- `cv_id` 由岗位和文件内容共同决定
-- 同一份简历投不同岗位会生成独立记录
+`settings`
+- `model`
+- `temperature`
+- `api_key`
+- `base_url`
+- `zhipu_search_api_key`
+
+## API
+
+### Jobs
+
+- `GET /jobs`
+- `GET /jobs/{job_id}`
+- `POST /jobs`
+- `PUT /jobs/{job_id}`
+- `DELETE /jobs/{job_id}`
+
+### CVs
+
+- `GET /cvs`
+- `GET /cvs/{cv_id}`
+- `POST /cvs`
+- `PUT /cvs/{cv_id}`
+- `DELETE /cvs/{cv_id}`
+
+### Upload
+
+- `POST /upload`
+
+表单字段：
+
+- `files`
+- `job_id` 或 `job_ids`
+
+### Settings
+
+- `GET /settings`
+- `PUT /settings`
+
+### SSE
+
+- `GET /sse?type=results`
+
+前端监听 `results` 事件来同步 CV 状态变化。
 
 ## 前端
 
-前端使用 Next.js + React Query。
+前端位于 `web/`，使用 Next.js 和 React Query。
 
 主要入口：
 
 - [web/app/http/useApi.ts](/Users/admin/Desktop/cv-intake/web/app/http/useApi.ts:1)
+- [web/app/http/type.ts](/Users/admin/Desktop/cv-intake/web/app/http/type.ts:1)
 - [web/app/cv/page.tsx](/Users/admin/Desktop/cv-intake/web/app/cv/page.tsx:1)
 - [web/app/cv/[id]/page.tsx](/Users/admin/Desktop/cv-intake/web/app/cv/[id]/page.tsx:1)
 - [web/app/_layout/app-sidebar.tsx](/Users/admin/Desktop/cv-intake/web/app/_layout/app-sidebar.tsx:1)
 - [web/app/utils/status.ts](/Users/admin/Desktop/cv-intake/web/app/utils/status.ts:1)
 
-页面结构：
+前端功能：
 
-- 左侧列表：简历记录
-- 详情页：PDF、摘要、核验、评分、原文
-- 评分区块：总分 + 分项评分 + 颜色分段
+- 岗位管理
+- 模型设置管理
+- PDF 上传
+- 简历列表
+- 简历详情页
+- SSE 实时更新
 
-## API
+详情页包含：
 
-- `GET /jobs`
-- `GET /cvs`
-- `GET /cvs/{id}`
-- `POST /upload`
-- `GET /sse?type=results`
+- PDF 预览
+- 摘要
+- 核验结果
+- 评分结果
+- 面试题/面试结果
+- OCR 原文
 
-## 运行
+## 运行方式
 
-后端：
+### 1. 安装后端依赖
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+```
+
+### 2. 启动 Redis
+
+```bash
+redis-server
+```
+
+### 3. 初始化数据库
+
+```bash
+python -m alembic upgrade head
+```
+
+### 4. 启动 API
+
+```bash
 python main.py
 ```
 
-前端：
+### 5. 启动 Worker
+
+```bash
+python -m api.workers.worker
+```
+
+### 6. 启动前端
 
 ```bash
 cd web
@@ -154,11 +304,26 @@ pnpm dev
 
 配置文件：[config.yaml](/Users/admin/Desktop/cv-intake/config.yaml:1)
 
-建议把真实 API Key 放到本地配置，不要长期硬编码进仓库。
+当前包含：
 
-## 状态
+- `app`
+- `llm`
+- `zhipu`
+- `server`
+- `worker`
 
-常见 `cvs.status`：
+关键项：
+
+- `llm.model`
+- `llm.api_key`
+- `llm.base_url`
+- `zhipu.api_key`
+- `worker.redis_url`
+- `worker.queue_name`
+
+## 状态说明
+
+`cvs.status` 常见值：
 
 - `queued`
 - `processing`
@@ -169,8 +334,20 @@ pnpm dev
 - `skipped_non_pdf`
 - `error`
 
-## 限制
+`processing_stage` 常见值：
 
-- 上传后工作流是异步执行的
+- `queued`
+- `ocr`
+- `summary`
+- `verify`
+- `score`
+- `interview`
+- `ocr_no_text`
+- `error`
+
+## 当前限制
+
+- Worker 依赖 Redis/RQ
 - `VerifyNode` 依赖外网搜索能力
-- `ScoreNode` 依赖模型接口可用
+- `SummaryNode`、`ScoreNode`、`InterviewNode` 依赖模型接口可用
+- 简历结构化和核验结果仍然主要依赖大模型输出质量

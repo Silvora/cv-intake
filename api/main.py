@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from api.routers.cv import router as cv_router
 from api.routers.job import router as job_router
+from api.routers.settings import router as settings_router
 from api.routers.sse import router as sse_router
 from api.routers.upload import router as upload_router
 from config.app import appConfig
@@ -31,6 +32,7 @@ class NentWorker:
         self.app.include_router(upload_router)
         self.app.include_router(cv_router)
         self.app.include_router(sse_router)
+        self.app.include_router(settings_router)
         PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
         self.app.mount("/public", StaticFiles(directory=str(PUBLIC_DIR)), name="public")
 

@@ -6,7 +6,7 @@ __pycache__
 node_modules
 
 public/cvs/*
-db/cv.db
+database/app.db
 
 
 app.log

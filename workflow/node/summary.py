@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from workflow.llm import llm
-from workflow.state import State
+from workflow.state import CVState
 
 
 # SummaryNode 的职责很单一：把 OCR 文本转成结构化简历。
@@ -37,6 +37,10 @@ class WorkExperience(BaseModel):
     """单个工作经历"""
     company: str = Field(..., description="公司名称")
     title: Optional[str] = Field(None, description="职位名称")
+    project_name: Optional[str] = Field(
+        None,
+        description="该工作经历中明确提到的项目名称；如果没有项目名称则填 null"
+    )
     start_date: Optional[str] = Field(None, description="开始时间，格式 YYYY-MM-DD 或 YYYY-MM")
     end_date: Optional[str] = Field(None, description="结束时间，格式同上，若至今则填 'Present'")
     location: Optional[str] = Field(None, description="工作地点")
@@ -93,10 +97,11 @@ SUMMARY_PROMPT = """
 1. 只能根据输入文本提取，不要臆测或补全缺失事实。
 2. 无法确定的单值字段填 null。
 3. 列表字段如果没有内容，返回 []。
-4. 日期尽量标准化为 YYYY-MM-DD 或 YYYY-MM；如果只能确定年份，则输出 YYYY；完全无法判断则填 null。
-5. 当前仍在进行的经历，结束时间统一填 "Present"。
-6. 优先保留简历原文语义，不要扩写和润色。
-7. 如果 OCR 文本有噪点，请尽量基于上下文纠正理解后再提取。
+4. 如果某段工作经历中明确写到了负责的项目名称，请尽量写入 work_experiences[].project_name。
+5. 日期尽量标准化为 YYYY-MM-DD 或 YYYY-MM；如果只能确定年份，则输出 YYYY；完全无法判断则填 null。
+6. 当前仍在进行的经历，结束时间统一填 "Present"。
+7. 优先保留简历原文语义，不要扩写和润色。
+8. 如果 OCR 文本有噪点，请尽量基于上下文纠正理解后再提取。
 """
 
 
@@ -124,7 +129,7 @@ def _extract_resume_summary(resume_text: str) -> ResumeSummary:
     raise TypeError(f"unexpected summary output type: {type(result)!r}")
 
 
-def SummaryNode(state: State) -> State:
+def SummaryNode(state: CVState) -> CVState:
     """
     工作流第一站：简历结构化抽取。
 
@@ -139,24 +144,18 @@ def SummaryNode(state: State) -> State:
     if not resume_text:
         return {
             "node": "verify",
+            "processing_stage": "summary",
             "resume_summary": {},
             "error": "resume_text is empty",
         }
 
     normalized_text = _normalize_resume_text(resume_text)
 
-    try:
-        summary = _extract_resume_summary(normalized_text)
-    except Exception as exc:
-        # 抽取失败时不抛异常中断工作流，而是把错误写入 state 继续下游。
-        return {
-            "node": "verify",
-            "resume_summary": {},
-            "error": f"summary extraction failed: {exc}",
-        }
+    summary = _extract_resume_summary(normalized_text)
 
     return {
         "node": "verify",
+        "processing_stage": "summary",
         "resume_summary": summary.model_dump(mode="json", exclude_none=False),
         "error": None,
     }

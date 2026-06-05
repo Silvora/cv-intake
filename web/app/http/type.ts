@@ -4,10 +4,21 @@ export type UploadStatus =
   | "uploading"
   | "processing"
   | "processed"
+  | "deleted"
   | "ocr_no_text"
   | "skipped_duplicate_md5"
   | "skipped_empty_file"
   | "skipped_non_pdf"
+  | "error"
+
+export type ProcessingStage =
+  | "queued"
+  | "ocr"
+  | "summary"
+  | "verify"
+  | "score"
+  | "interview"
+  | "ocr_no_text"
   | "error"
 
 // 前端左侧列表和上传后的岗位列表都用这套最小字段。
@@ -30,6 +41,12 @@ export interface JobsResponse {
   total: number
 }
 
+export interface JobMutationResponse {
+  success: boolean
+  message: string
+  item: JobApiItem
+}
+
 // 前端上传对话框里选择的单个文件。
 export interface UploadFileInput {
   file: File
@@ -45,6 +62,8 @@ export interface CvRecordApiItem {
   file_path?: string
   md5?: string | null
   status: UploadStatus
+  processing_stage?: ProcessingStage | null
+  processing_attempt?: number | null
   error?: string | null
   ocr_engine?: string | null
   resume_text?: string | null
@@ -54,6 +73,8 @@ export interface CvRecordApiItem {
   resume_summary?: Record<string, unknown> | null
   verify_result?: Record<string, unknown> | null
   score_result?: Record<string, unknown> | null
+  interview_result?: Record<string, unknown> | null
+  starred?: boolean
   final_answer?: string | null
   data?: CvLegacyData | null
   created_at?: string
@@ -71,11 +92,36 @@ export interface CvDetailResponse {
   item: CvRecordApiItem
 }
 
+export interface CvMutationResponse {
+  success: boolean
+  message: string
+  item: CvRecordApiItem
+}
+
 export interface UploadResponse {
   success: boolean
   message: string
   count: number
   items: CvRecordApiItem[]
+}
+
+export interface SettingsApiItem {
+  model: string
+  temperature: number
+  api_key: string
+  base_url: string
+  zhipu_search_api_key: string
+}
+
+export interface SettingsResponse {
+  success: boolean
+  item: SettingsApiItem
+}
+
+export interface SettingsMutationResponse {
+  success: boolean
+  message: string
+  item: SettingsApiItem
 }
 
 // SSE 推送的 results 事件 payload：key 是记录 id，value 是完整记录。
@@ -101,6 +147,7 @@ export interface CvLegacyData {
       experience_summary?: string
       work_experiences?: Array<{
         company?: string
+        project_name?: string
         duration?: string
         projects?: string[] | string
       }>
@@ -130,6 +177,7 @@ export interface CvLegacyData {
     meta?: {
       generated_at?: string
     }
+    interview?: Record<string, unknown>
   }
   error?: {
     code?: string

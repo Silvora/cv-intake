@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from workflow.llm import llm
 from workflow.node.summary import ResumeSummary
 from workflow.node.verify import VerifyResult
-from workflow.state import State
+from workflow.state import CVState
 
 
 # ScoreNode 只做岗位匹配评分：
@@ -80,7 +80,7 @@ SCORING_PROMPT = """
 """
 
 
-def ScoreNode(state: State) -> State:
+def ScoreNode(state: CVState) -> CVState:
     """
     ScoreNode 负责基于岗位文本、简历摘要和核验结果进行最终打分。
 
@@ -108,6 +108,7 @@ def ScoreNode(state: State) -> State:
         )
         return {
             "node": "end",
+            "processing_stage": "score",
             "score_result": result.model_dump(mode="json", exclude_none=False),
             "final_answer": "无法评分：缺少招聘信息。",
         }
@@ -120,6 +121,7 @@ def ScoreNode(state: State) -> State:
         )
         return {
             "node": "end",
+            "processing_stage": "score",
             "score_result": result.model_dump(mode="json", exclude_none=False),
             "final_answer": "无法评分：缺少结构化简历信息。",
         }
@@ -134,29 +136,18 @@ def ScoreNode(state: State) -> State:
         )
         return {
             "node": "end",
+            "processing_stage": "score",
             "score_result": result.model_dump(mode="json", exclude_none=False),
             "final_answer": "无法评分：简历结构化结果无效。",
         }
 
     verify_result = _load_verify_result(verify_result_data)
 
-    try:
-        score_result = _score_resume(summary, verify_result, job_text, upstream_error)
-    except Exception as exc:
-        # 评分失败时继续返回结构化 blocked 结果，保证 API 层和前端都能稳定消费。
-        result = _build_blocked_score_result(
-            message=f"score generation failed: {exc}",
-            suggestion="检查评分模型调用和输入数据是否正常。",
-            upstream_error=upstream_error,
-        )
-        return {
-            "node": "end",
-            "score_result": result.model_dump(mode="json", exclude_none=False),
-            "final_answer": "无法评分：评分模型调用失败。",
-        }
+    score_result = _score_resume(summary, verify_result, job_text, upstream_error)
 
     return {
         "node": "end",
+        "processing_stage": "score",
         "score_result": score_result.model_dump(mode="json", exclude_none=False),
         "final_answer": _build_final_answer(score_result),
     }

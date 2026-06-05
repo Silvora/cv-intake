@@ -13,7 +13,7 @@ export function SectionCard({
 }) {
   return (
     <Card className="border-border/60 bg-card/90 shadow-sm w-full">
-      <CardHeader className="pb-3">
+      <CardHeader>
         <CardTitle className="text-sm font-medium">{title}</CardTitle>
         {description ? (
           <CardDescription className="text-xs">{description}</CardDescription>

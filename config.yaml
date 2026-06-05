@@ -1,6 +1,6 @@
 app:
     name: "cv-intake"
-    version: "0.0.4"
+    version: "0.0.5"
 
 llm:
     model: ""
@@ -15,3 +15,7 @@ server:
     host: 0.0.0.0
     port: 9000
     cors_origins: ["*"]
+
+worker:
+    redis_url: "redis://127.0.0.1:6379/0"
+    queue_name: "cv-processing"

@@ -1,10 +1,15 @@
+from pathlib import Path
 from typing import List
 
 import yaml
 from pydantic import BaseModel
-# 读取并解析YAML
-with open('config.yaml', 'r', encoding='utf-8') as file:
-    config = yaml.safe_load(file)
+
+CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.yaml"
+
+
+def _load_config() -> dict:
+    with CONFIG_PATH.open("r", encoding="utf-8") as file:
+        return yaml.safe_load(file) or {}
 
 
 class AppConfig(BaseModel):
@@ -27,12 +32,17 @@ class ServerConfig(BaseModel):
     cors_origins: List[str] = ["*"]
 
 
+class WorkerConfig(BaseModel):
+    redis_url: str = "redis://127.0.0.1:6379/0"
+    queue_name: str = "cv-processing"
+
+
 class Config(BaseModel):
     app: AppConfig = AppConfig()
     llm: LLMConfig = LLMConfig()
     zhipu: ZhipuConfig = ZhipuConfig()
     server: ServerConfig = ServerConfig()
+    worker: WorkerConfig = WorkerConfig()
 
 
-
-appConfig = Config(**config)
+appConfig = Config(**_load_config())

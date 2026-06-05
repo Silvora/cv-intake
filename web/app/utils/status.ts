@@ -25,6 +25,40 @@ export function getStatusLabel(status: CvRecordApiItem["status"]) {
   }
 }
 
+export function getProcessingStageLabel(stage?: CvRecordApiItem["processing_stage"]) {
+  switch (stage) {
+    case "queued":
+      return "排队中"
+    case "ocr":
+      return "OCR 提取中"
+    case "summary":
+      return "简历抽取中"
+    case "verify":
+      return "联网核验中"
+    case "score":
+      return "岗位评分中"
+    case "interview":
+      return "面试题生成中"
+    case "ocr_no_text":
+      return "无文本"
+    case "error":
+      return "处理失败"
+    default:
+      return "待处理"
+  }
+}
+
+export function getProcessingStageWithAttempt(
+  stage?: CvRecordApiItem["processing_stage"],
+  attempt?: CvRecordApiItem["processing_attempt"]
+) {
+  const label = getProcessingStageLabel(stage)
+  if (typeof attempt === "number" && attempt > 0) {
+    return `${label} · 第 ${attempt} 次`
+  }
+  return label
+}
+
 export function getStatusClassName(status: CvRecordApiItem["status"]) {
   switch (status) {
     case "processed":

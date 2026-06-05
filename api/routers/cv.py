@@ -1,106 +1,35 @@
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from db.database import get_db
-from db.models import Cvs
-from utils.cv_store import (
-    cv_item_dict,
-    delete_cv_file,
-    get_job_or_404,
-    now_iso,
-    save_uploaded_cv,
+from database.main import get_db
+from database.models.cv import Cvs
+from database.schemas.cv import (
+    CvDetailResponse,
+    CvItem,
+    CvListResponse,
+    CvMutationResponse,
+    CvUpdate,
 )
+from api.utils.cv_file_store import delete_cv_file, now_iso
+from api.utils.cv_repository import get_cv_or_404, get_job_or_404
+from api.utils.cv_serializer import cv_item_dict
+from api.utils.upload_service import save_uploaded_cv
 from utils.sse_conn import conn
 
 router = APIRouter(tags=["cvs"])
 
 
-class CvItem(BaseModel):
-    id: str
-    filename: str
-    job_id: str
-    job_name: str = ""
-    file_path: str = ""
-    md5: str | None = None
-    status: str
-    error: str | None = None
-    ocr_engine: str | None = None
-    resume_text: str | None = None
-    resume_text_length: int | None = None
-    job_text: str | None = None
-    job_text_length: int | None = None
-    resume_summary: dict[str, Any] | None = None
-    verify_result: dict[str, Any] | None = None
-    score_result: dict[str, Any] | None = None
-    final_answer: str | None = None
-    data: dict[str, Any] | None = None
-    created_at: str | None = None
-    updated_at: str | None = None
-
-
-class CvListItem(BaseModel):
-    id: str
-    filename: str
-    job_id: str
-    job_name: str = ""
-    file_path: str = ""
-    md5: str | None = None
-    status: str
-    error: str | None = None
-    ocr_engine: str | None = None
-    resume_text_length: int | None = None
-    final_answer: str | None = None
-    created_at: str | None = None
-    updated_at: str | None = None
-    score_result: dict[str, Any] | None = None
-
-
-class CvListResponse(BaseModel):
-    success: bool = True
-    items: list[CvListItem]
-    total: int
-
-
-class CvDetailResponse(BaseModel):
-    success: bool = True
-    item: CvItem
-
-
-class CvMutationResponse(BaseModel):
-    success: bool = True
-    message: str
-    item: CvItem
-
-
-class CvUpdate(BaseModel):
-    filename: Optional[str] = Field(default=None, min_length=1)
-    job_id: Optional[str] = None
-    status: Optional[str] = Field(default=None, min_length=1)
-    error: Optional[str] = None
-
-
-def _model_dump(model: BaseModel, **kwargs):
+def _model_dump(model, **kwargs):
     if hasattr(model, "model_dump"):
         return model.model_dump(**kwargs)
     return model.dict(**kwargs)
 
 
-def _get_cv_or_404(db: Session, cv_id: str) -> Cvs:
-    cv = db.query(Cvs).filter(Cvs.id == cv_id).first()
-    if cv is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"CV {cv_id} not found",
-        )
-    return cv
-
-
-def _to_cv_list_item(cv: Cvs) -> CvListItem:
+def _to_cv_list_item(cv: Cvs) -> CvItem:
     item = cv_item_dict(cv)
-    return CvListItem(
+    return CvItem(
         id=item["id"],
         filename=item["filename"],
         job_id=item["job_id"],
@@ -108,6 +37,8 @@ def _to_cv_list_item(cv: Cvs) -> CvListItem:
         file_path=item["file_path"],
         md5=item["md5"],
         status=item["status"],
+        processing_stage=item["processing_stage"],
+        processing_attempt=item["processing_attempt"],
         error=item["error"],
         ocr_engine=item["ocr_engine"],
         resume_text_length=item["resume_text_length"],
@@ -115,6 +46,8 @@ def _to_cv_list_item(cv: Cvs) -> CvListItem:
         created_at=item["created_at"],
         updated_at=item["updated_at"],
         score_result=item["score_result"],
+        interview_result=item["interview_result"],
+        starred=item["starred"],
     )
 
 
@@ -145,7 +78,7 @@ def list_cvs(
 
 @router.get("/cvs/{cv_id}", response_model=CvDetailResponse)
 def get_cv(cv_id: str, db: Session = Depends(get_db)):
-    cv = _get_cv_or_404(db, cv_id)
+    cv = get_cv_or_404(db, cv_id)
     return CvDetailResponse(item=CvItem(**cv_item_dict(cv)))
 
 
@@ -181,7 +114,7 @@ async def create_cv(
 
 @router.put("/cvs/{cv_id}", response_model=CvMutationResponse)
 async def update_cv(cv_id: str, payload: CvUpdate, db: Session = Depends(get_db)):
-    cv = _get_cv_or_404(db, cv_id)
+    cv = get_cv_or_404(db, cv_id)
     update_data = _model_dump(payload, exclude_unset=True)
     if not update_data:
         raise HTTPException(
@@ -215,6 +148,9 @@ async def update_cv(cv_id: str, payload: CvUpdate, db: Session = Depends(get_db)
     if "error" in update_data:
         cv.error = update_data["error"].strip() if isinstance(update_data["error"], str) else None
 
+    if "starred" in update_data and update_data["starred"] is not None:
+        cv.starred = "true" if update_data["starred"] else "false"
+
     cv.updated_at = now_iso()
     db.commit()
     db.refresh(cv)
@@ -226,7 +162,7 @@ async def update_cv(cv_id: str, payload: CvUpdate, db: Session = Depends(get_db)
 
 @router.delete("/cvs/{cv_id}", response_model=CvMutationResponse)
 async def delete_cv(cv_id: str, db: Session = Depends(get_db)):
-    cv = _get_cv_or_404(db, cv_id)
+    cv = get_cv_or_404(db, cv_id)
     item = CvItem(**cv_item_dict(cv))
     delete_cv_file(cv.file_path)
     db.delete(cv)

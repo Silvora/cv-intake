@@ -11,11 +11,16 @@ import { toast } from "sonner"
 import { apiClient } from "@/api"
 import type {
   CvDetailResponse,
+  CvMutationResponse,
   CvResultsSsePayload,
   CvsResponse,
   JobApiItem,
+  JobMutationResponse,
   JobListType,
   JobsResponse,
+  SettingsApiItem,
+  SettingsMutationResponse,
+  SettingsResponse,
   UploadFileInput,
   UploadResponse,
   UploadStatus
@@ -40,6 +45,85 @@ export function useJobsQuery() {
       return payload.success ? payload.items.map(normalizeJob) : []
     },
     staleTime: 30_000,
+  })
+}
+
+export function useCreateJobMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: { label: string; description: string }) => {
+      const payload = await apiClient.post<JobMutationResponse>("/jobs", input)
+      return normalizeJob(payload.item)
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] })
+      toast.success("岗位已创建")
+    },
+  })
+}
+
+export function useUpdateJobMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: { id: string; label: string; description: string }) => {
+      const payload = await apiClient.put<JobMutationResponse>(`/jobs/${input.id}`, {
+        label: input.label,
+        description: input.description,
+      })
+      return normalizeJob(payload.item)
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] })
+      toast.success("岗位已更新")
+    },
+  })
+}
+
+export function useDeleteJobMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (jobId: string) => {
+      const payload = await apiClient.delete<JobMutationResponse>(`/jobs/${jobId}`)
+      return normalizeJob(payload.item)
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] })
+      toast.success("岗位已删除")
+    },
+  })
+}
+
+export function useUpdateCvMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: { id: string; starred?: boolean }) => {
+      const payload = await apiClient.put<CvMutationResponse>(`/cvs/${input.id}`, input)
+      return payload.item
+    },
+    onSuccess: async (item) => {
+      queryClient.setQueryData(["cvs", item.id], item)
+      await queryClient.invalidateQueries({ queryKey: ["cvs"] })
+    },
+  })
+}
+
+export function useDeleteCvMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (cvId: string) => {
+      const payload = await apiClient.delete<CvMutationResponse>(`/cvs/${cvId}`)
+      return payload.item
+    },
+    onSuccess: async (_, cvId) => {
+      await queryClient.invalidateQueries({ queryKey: ["cvs"] })
+      await queryClient.removeQueries({ queryKey: ["cvs", cvId] })
+      toast.success("简历已删除")
+    },
   })
 }
 
@@ -74,6 +158,32 @@ export function useCvDetailQuery(cvId?: string) {
     },
     enabled: Boolean(cvId),
     staleTime: 5_000,
+  })
+}
+
+export function useSettingsQuery() {
+  return useQuery({
+    queryKey: ["settings"] as const,
+    queryFn: async () => {
+      const payload = await apiClient.get<SettingsResponse>("/settings")
+      return payload.success ? payload.item : null
+    },
+    staleTime: 5_000,
+  })
+}
+
+export function useUpdateSettingsMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: SettingsApiItem) => {
+      const payload = await apiClient.put<SettingsMutationResponse>("/settings", input)
+      return payload.item
+    },
+    onSuccess: (item) => {
+      queryClient.setQueryData(["settings"], item)
+      toast.success("设置已保存")
+    },
   })
 }
 
@@ -117,8 +227,15 @@ export function useApi() {
   return {
     uploadCvs,
     useJobsQuery,
+    useCreateJobMutation,
+    useUpdateJobMutation,
+    useDeleteJobMutation,
+    useUpdateCvMutation,
+    useDeleteCvMutation,
     useCvsQuery,
     useCvDetailQuery,
+    useSettingsQuery,
+    useUpdateSettingsMutation,
     useUploadCvsMutation,
   }
 }
@@ -171,6 +288,10 @@ export function useApiSse(
       source.close()
     }
   }, [apiBaseUrl])
+}
+
+export function useReactQueryClient() {
+  return useQueryClient()
 }
 
 export type { UploadStatus }

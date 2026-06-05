@@ -67,7 +67,7 @@ export function UploadsDialog() {
   const jobsQuery = useJobsQuery()
   const uploadMutation = useUploadCvsMutation()
 
-  const jobList = jobsQuery.data ?? []
+  const jobList = React.useMemo(() => jobsQuery.data ?? [], [jobsQuery.data])
   const selectedJob = React.useMemo(
     () => jobList.find((job) => job.id === selectedJobId),
     [jobList, selectedJobId]
@@ -151,7 +151,7 @@ export function UploadsDialog() {
       />
       <DialogContent
         showCloseButton={false}
-        className="overflow-hidden p-0 md:max-h-160 md:max-w-190"
+        className="overflow-hidden p-0 h-[75vh] md:max-w-240"
       >
         <input
           ref={folderInputRef}
@@ -229,7 +229,7 @@ export function UploadsDialog() {
                     </Select>
                     <FieldDescription
                       className={cn(
-                        "max-h-57.5 overflow-y-auto rounded-md border bg-muted/30 px-3 py-2"
+                        "max-h-104 overflow-y-auto rounded-md border bg-muted/30 px-3 py-2"
                       )}
                     >
                       {jobsQuery.isLoading
@@ -244,7 +244,7 @@ export function UploadsDialog() {
             </FieldSet>
           </aside>
 
-          <section className="flex min-h-130 flex-col">
+          <section className="flex h-full flex-col">
             <div className="border-b px-5 py-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -276,9 +276,6 @@ export function UploadsDialog() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="truncate font-medium">{file.name}</div>
-                          <div className="truncate text-muted-foreground">
-                            {file.relativePath}
-                          </div>
                         </div>
                         <Badge variant="secondary">
                           {(file.size / 1024 / 1024).toFixed(2)} MB
@@ -287,7 +284,7 @@ export function UploadsDialog() {
                     </div>
                   ))
                 ) : (
-                  <div className="flex h-full min-h-70 items-center justify-center rounded-lg border border-dashed text-muted-foreground">
+                  <div className="flex h-full items-center justify-center rounded-lg border border-dashed text-muted-foreground">
                     选择文件或文件夹后，这里会列出待处理的 PDF
                   </div>
                 )}
