@@ -37,8 +37,6 @@ export function Hero({
   illustrationAlt = "Hero Illustration",
   title,
   description,
-  buttonText,
-  buttonHref = "#",
 }: HeroProps) {
   return (
     <section className="relative flex w-full h-full items-center justify-center overflow-hidden bg-background px-4 py-16 md:px-8 md:py-24">
@@ -74,15 +72,6 @@ export function Hero({
           {description}
         </motion.p>
 
-        {/* <motion.div variants={itemVariants} className="mt-8">
-          <Button
-            size="lg"
-            className="h-10 rounded-full px-5"
-          >
-            {buttonText}
-            <HugeiconsIcon icon={ArrowRight} strokeWidth={1.8} />
-          </Button>
-        </motion.div> */}
       </motion.div>
     </section>
   )

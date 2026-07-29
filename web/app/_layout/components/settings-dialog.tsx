@@ -19,8 +19,8 @@ import {
   SidebarMenuItem,
   SidebarProvider,
 } from "@/components/ui/sidebar"
-import { JobsSettingsPanel } from "./components/jobs-settings-panel"
-import { ModelSettingsPanel } from "./components/model-settings-panel"
+import { JobsSettingsPanel } from "./jobs-settings-panel"
+import { ModelSettingsPanel } from "./model-settings-panel"
 
 type SettingsTab = "model" | "jobs"
 

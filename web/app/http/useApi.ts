@@ -26,6 +26,12 @@ import type {
   UploadStatus
 } from "./type"
 
+export interface CvsQueryParams {
+  jobId?: string
+  keyword?: string
+  status?: UploadStatus
+}
+
 function normalizeJob(item: JobApiItem): JobListType {
   return {
     id: String(item.id),
@@ -131,11 +137,21 @@ export function useDeleteCvMutation() {
 /**
  * 简历列表
  */
-export function useCvsQuery() {
+export function useCvsQuery(params: CvsQueryParams = {}) {
+  const jobId = params.jobId?.trim() || undefined
+  const keyword = params.keyword?.trim() || undefined
+  const status = params.status
+
   return useQuery({
-    queryKey: ["cvs"] as const,
+    queryKey: ["cvs", "list", { jobId, keyword, status }] as const,
     queryFn: async () => {
-      const payload = await apiClient.get<CvsResponse>("/cvs")
+      const payload = await apiClient.get<CvsResponse>("/cvs", {
+        params: {
+          job_id: jobId,
+          keyword,
+          status,
+        },
+      })
       return payload.success ? payload.items : []
     },
     staleTime: 5_000,

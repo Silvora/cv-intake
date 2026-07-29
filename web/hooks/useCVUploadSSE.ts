@@ -16,24 +16,22 @@ export function useCVUploadSSE(apiBaseUrl: string) {
         queryClient.setQueryData(["cvs", id], item)
       }
 
-      queryClient.setQueryData(["cvs"], (current: CvRecordApiItem[] | undefined) => {
-        const nextMap = new Map((current ?? []).map((item) => [item.id, item]))
-
-        for (const [id, item] of Object.entries(payload)) {
-          if (item.status === "deleted") {
-            nextMap.delete(id)
-            continue
+      queryClient.setQueriesData<CvRecordApiItem[]>(
+        { queryKey: ["cvs", "list"], exact: false },
+        (current) => {
+          if (!current) {
+            return current
           }
-          nextMap.set(id, {
-            ...nextMap.get(id),
-            ...item,
-          })
-        }
 
-        return Array.from(nextMap.values()).sort((a, b) =>
-          String(b.updated_at ?? "").localeCompare(String(a.updated_at ?? ""))
-        )
-      })
+          const next = current
+            .filter((item) => payload[item.id]?.status !== "deleted")
+            .map((item) => (payload[item.id] ? { ...item, ...payload[item.id] } : item))
+
+          return next.sort((a, b) =>
+            String(b.updated_at ?? "").localeCompare(String(a.updated_at ?? ""))
+          )
+        }
+      )
 
       const activeCvId = window.location.pathname.startsWith("/cv/")
         ? window.location.pathname.split("/")[2]
